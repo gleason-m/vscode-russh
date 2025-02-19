@@ -133,7 +133,6 @@ use crate::*;
 
 mod kex;
 mod session;
-pub use self::kex::*;
 pub use self::session::*;
 mod encrypted;
 

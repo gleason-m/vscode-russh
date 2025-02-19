@@ -657,9 +657,6 @@ async fn test_session<RC, RS, CH, SH, F1, F2, CERR, SERR>(
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = socket.local_addr().unwrap();
 
-    #[derive(Clone)]
-    struct Server {}
-
     let server_join = tokio::spawn(async move {
         let (socket, _) = socket.accept().await.unwrap();
 
