@@ -17,6 +17,8 @@
 //! This module exports kex algorithm names for use with [Preferred].
 #[cfg(feature = "rs-crypto")]
 mod curve25519;
+#[cfg(feature = "openssl")]
+mod ecdh_nistp_openssl;
 mod dh;
 mod none;
 use std::cell::RefCell;
@@ -126,6 +128,7 @@ thread_local! {
     static BUFFER: RefCell<CryptoVec> = RefCell::new(CryptoVec::new());
 }
 
+
 pub(crate) fn compute_keys<D: Digest>(
     shared_secret: Option<&[u8]>,
     session_id: &CryptoVec,
@@ -135,6 +138,66 @@ pub(crate) fn compute_keys<D: Digest>(
     local_to_remote_mac: mac::Name,
     is_server: bool,
 ) -> Result<super::cipher::CipherPair, crate::Error> {
+    let hasher = |b: &[u8]| -> Result<Vec<u8>, crate::Error> {
+        let mut hasher = D::new();
+        hasher.update(&b[..]);
+        let hash = hasher.finalize();
+        Ok(hash.to_vec())
+    };
+
+    compute_keys_inner(
+        shared_secret,
+        session_id,
+        exchange_hash,
+        cipher,
+        remote_to_local_mac,
+        local_to_remote_mac,
+        is_server,
+        hasher
+    )
+}
+
+#[cfg(feature = "openssl")]
+pub(crate) fn compute_keys_openssl(
+    shared_secret: Option<&[u8]>,
+    session_id: &CryptoVec,
+    exchange_hash: &CryptoVec,
+    cipher: cipher::Name,
+    remote_to_local_mac: mac::Name,
+    local_to_remote_mac: mac::Name,
+    is_server: bool,
+    msg_digest: openssl::hash::MessageDigest,
+) -> Result<super::cipher::CipherPair, crate::Error> {
+    let hasher = |b: &[u8]| -> Result<Vec<u8>, crate::Error> {
+        let hash = openssl::hash::hash(msg_digest, &b)?;
+        Ok(hash.to_vec())
+    };
+
+    compute_keys_inner(
+        shared_secret,
+        session_id,
+        exchange_hash,
+        cipher,
+        remote_to_local_mac,
+        local_to_remote_mac,
+        is_server,
+        hasher
+    )
+}
+
+fn compute_keys_inner<F>(
+    shared_secret: Option<&[u8]>,
+    session_id: &CryptoVec,
+    exchange_hash: &CryptoVec,
+    cipher: cipher::Name,
+    remote_to_local_mac: mac::Name,
+    local_to_remote_mac: mac::Name,
+    is_server: bool,
+    hasher: F,
+) -> Result<super::cipher::CipherPair, crate::Error> 
+where 
+    F: Fn(&[u8]) -> Result<Vec<u8>, crate::Error>
+{
     let cipher = CIPHERS.get(&cipher).ok_or(crate::Error::UnknownAlgo)?;
     let remote_to_local_mac = MACS
         .get(&remote_to_local_mac)
@@ -160,11 +223,7 @@ pub(crate) fn compute_keys<D: Digest>(
                         buffer.extend(exchange_hash.as_ref());
                         buffer.push(c);
                         buffer.extend(session_id.as_ref());
-                        let hash = {
-                            let mut hasher = D::new();
-                            hasher.update(&buffer[..]);
-                            hasher.finalize()
-                        };
+                        let hash = hasher(&buffer[..])?;
                         key.extend(hash.as_ref());
 
                         while key.len() < len {
@@ -175,11 +234,7 @@ pub(crate) fn compute_keys<D: Digest>(
                             }
                             buffer.extend(exchange_hash.as_ref());
                             buffer.extend(key);
-                            let hash = {
-                                let mut hasher = D::new();
-                                hasher.update(&buffer[..]);
-                                hasher.finalize()
-                            };
+                            let hash = hasher(&buffer[..])?;
                             key.extend(hash.as_ref());
                         }
 
