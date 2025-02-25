@@ -28,6 +28,36 @@ impl KexType for EcdhNistP256KexType {
     }
 }
 
+pub struct EcdhNistP384KexType {}
+
+impl KexType for EcdhNistP384KexType {
+    fn make(&self) -> Box<dyn KexAlgorithm + Send> {
+        let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
+        Box::new(EcdhNistPKex{
+            group,
+            local_private_key: None,
+            local_public_key: None,
+            shared_secret: None,
+            digest: MessageDigest::sha384()
+        }) as Box<dyn KexAlgorithm + Send>
+    }
+}
+
+pub struct EcdhNistP521KexType {}
+
+impl KexType for EcdhNistP521KexType {
+    fn make(&self) -> Box<dyn KexAlgorithm + Send> {
+        let group = EcGroup::from_curve_name(Nid::SECP521R1).unwrap();
+        Box::new(EcdhNistPKex{
+            group,
+            local_private_key: None,
+            local_public_key: None,
+            shared_secret: None,
+            digest: MessageDigest::sha512()
+        }) as Box<dyn KexAlgorithm + Send>
+    }
+}
+
 pub struct EcdhNistPKex {
     group: EcGroup,
     local_private_key: Option<EcKey<Private>>,
